@@ -1,0 +1,115 @@
+#!/bin/bash
+
+scr=
+user=
+schroot=
+conkyrc=
+
+keydb=
+keydbkey=
+keysdir=
+
+vmpartdev=
+vmpartkey=
+vmpartdir=
+
+corptc=
+corpkey=
+corpdir=
+
+#start xcompmgr, this give us transparency etc.
+xcompmgr &
+
+#start xscreensaver with no splash screen
+xscreensaver -no-splash &
+
+#set the background
+feh --bg-scale $scr &
+
+#start xflux from my chroot
+schroot -c $schroot -u $user -- /usr/bin/lxterminal -t xflux -e "/usr/bin/xflux -z 78728 -k 2500 -nofork" &
+
+#wait until we can find the xflux window
+state3=0
+while [ $state3 == 0 ]
+do
+    for i in "$(wmctrl -l | cut -d ' ' -f 5)"
+    do
+        if [[ "$i" == *"xflux"* ]]
+        then
+            echo "found xflux and minimizing"
+            state3=1
+        fi
+    echo "can't find xflux"
+    sleep 1
+    done
+done
+
+sleep 1
+
+#lets minimize the xflux window now
+wmctrl -r xflux -b add,hidden 
+
+#startup conky
+conky -c $conkyrc &
+
+#lets sleep until we mount my phone, the udev script handles mounting it
+while [ ! -f "$keydb" ]
+do
+    echo "waiting for keydb"
+    sleep 1
+done
+
+#mount the keys tc volume from my phone
+sudo truecrypt -k $keydbkey "$keydb" $keysdir &
+
+#wait until it is mounted and we can access the keys dir
+while [ "$(truecrypt -t -l | cut -d ' ' -f 5)" != "$keysdir" ]
+do
+    sleep 1
+done
+
+#mount the encrypted vmshare
+sudo truecrypt -k $vmpartkey $vmpartdev $vmpartdir &
+
+#wait until the vmshare volme is mounted -- need to make this a function
+state1=0
+while [ $state1 == 0 ]
+do
+    for x in "$(truecrypt -t -l | cut -d ' ' -f 4)"
+    do
+        if [[ "$x" == *"$vmpartdir"* ]]
+        then
+            echo "found vmshare volume...."
+            state1=1
+        fi
+    done
+done
+
+sleep 1
+
+#mount the corp share that is for corporate email
+sudo truecrypt -k $corpkey $corptc $corpdir &
+
+#wait until the corp volme is mounted
+state2=0
+while [ $state2 == 0 ]
+do
+    for x in "$(truecrypt -t -l | cut -d ' ' -f 4)"
+    do
+        if [[ "$x" == *"$corpdir"* ]]
+        then
+            echo "found corp volume...."
+            state2=1
+        fi
+    done
+done
+
+sleep 1
+
+#unmount the keysdb
+sudo truecrypt -d $keysdir
+
+#start up pidgin
+schroot -c $schroot -u $user -- pidgin &
+
